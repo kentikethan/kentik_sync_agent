@@ -1,4 +1,4 @@
-# kentik-sync-agent
+# Kentik Sync Agent
 
 A self-hosted agent that periodically syncs network inventory — devices,
 sites, and IP address groupings — from source-of-truth systems (NetBox
