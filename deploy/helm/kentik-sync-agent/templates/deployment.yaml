@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  # Stateful periodic-job pattern: exactly one replica. Scaling this up
+  # would just run every sync twice against the same Kentik account.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: kentik-sync-agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["run", "--config", "/etc/kentik-sync-agent/config.yaml"]
+          {{- if .Values.secretEnv }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-env
+          {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+            - name: health
+              containerPort: {{ .Values.service.healthPort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kentik-sync-agent
+              readOnly: true
+            {{- if .Values.persistence.enabled }}
+            - name: state
+              mountPath: /var/lib/kentik-sync-agent
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- if .Values.persistence.enabled }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-state
+        {{- else }}
+        - name: state
+          emptyDir: {}
+        {{- end }}

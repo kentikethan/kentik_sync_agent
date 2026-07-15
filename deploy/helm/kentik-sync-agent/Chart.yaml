@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kentik-sync-agent
+description: Syncs device, site, and IP-group inventory into Kentik from NetBox and other sources.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

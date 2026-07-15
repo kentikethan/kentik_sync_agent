@@ -1,0 +1,80 @@
+# Example configuration for kentik-sync-agent.
+#
+# Copy this file, fill in the values below, and point the agent at it:
+#   kentik-sync-agent run --config myconfig.yaml
+#
+# Secrets are never written inline — reference an environment variable with
+# ${VAR_NAME} and the agent will substitute it at load time.
+
+kentik:
+  # Kentik's public gRPC API host. Leave as-is unless Kentik has given you a
+  # region-specific endpoint.
+  api_url: "grpc.api.kentik.com:443"
+
+  # Credentials from Kentik > Profile > Authentication.
+  email: "${KENTIK_EMAIL}"
+  api_token: "${KENTIK_API_TOKEN}"
+
+  # Kentik billing plan ID that synced devices are created under. Find it
+  # under Admin > Plans in the Kentik UI.
+  default_plan_id: 11467
+
+  # Kentik device_subtype assigned to synced devices, unless a source
+  # overrides it. Must match a subtype enabled on your account — see
+  # Admin > Devices > Add Device for the list of valid values.
+  default_device_subtype: "host-nprobe-dns-www"
+
+  # An existing Custom Dimension (Admin > Custom Dimensions) that IP-group
+  # Populators are written into. Create it once, by hand, before first sync.
+  custom_dimension_id: "12345"
+
+  rate_limit:
+    requests_per_minute: 100
+
+# Local state: the authoritative record of which Kentik objects this agent
+# has created, since Kentik's Device/Site/Populator APIs have no field of
+# their own to store a NetBox (or other source) ID. Back this file up, or
+# mount a persistent volume in Docker/Kubernetes — see docs/plugins.md.
+state:
+  driver: sqlite
+  path: /var/lib/kentik-sync-agent/state.db
+
+observability:
+  log_level: info      # debug | info | warn | error
+  log_format: json      # json | text
+  metrics_addr: ":9090" # Prometheus /metrics
+  health_addr: ":8080"  # /healthz, /readyz
+
+sources:
+  - name: netbox-primary
+    type: netbox
+    connection:
+      url: "https://netbox.internal.example.com"
+      token: "${NETBOX_TOKEN}"
+      timeout: 15s
+      # insecure_skip_verify: true   # only for self-signed lab instances
+    sync:
+      # device_labels applies each device's NetBox tenant/role to it in
+      # Kentik as labels (format "Netbox:Device:Tenant:<name>" and
+      # "Netbox:Device:Role:<name>"). It requires devices to also be listed
+      # here, since it looks up each device's already-synced Kentik ID.
+      objects: [sites, devices, ip_groups, device_labels]
+      interval: 15m
+      full_reconcile_interval: 24h
+      incremental: true
+    mapping:
+      ip_groups:
+        source: prefixes       # prefixes | ip_ranges | both
+        label_field: vrf        # vrf | role | tenant | site
+        direction: either        # src | dst | either
+
+  # Add another source the same way — for example, a second NetBox
+  # instance, or (once available) Nautobot/Infoblox:
+  # - name: netbox-secondary
+  #   type: netbox
+  #   connection:
+  #     url: "https://netbox-eu.internal.example.com"
+  #     token: "${NETBOX_EU_TOKEN}"
+  #   sync:
+  #     objects: [devices]
+  #     interval: 30m

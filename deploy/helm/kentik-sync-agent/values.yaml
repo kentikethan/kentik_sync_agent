@@ -1,0 +1,50 @@
+image:
+  repository: ghcr.io/kentikethan/kentik-sync-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# The agent's config.yaml content, rendered verbatim into a ConfigMap. Keep
+# secrets out of here — use ${VAR}-style references and populate them via
+# `secretEnv` below (or your own External Secrets setup).
+config: |
+  kentik:
+    api_url: "grpc.api.kentik.com:443"
+    email: "${KENTIK_EMAIL}"
+    api_token: "${KENTIK_API_TOKEN}"
+    default_plan_id: 0
+    default_device_subtype: "host-nprobe-dns-www"
+    custom_dimension_id: ""
+  state:
+    driver: sqlite
+    path: /var/lib/kentik-sync-agent/state.db
+  observability:
+    log_level: info
+    log_format: json
+    metrics_addr: ":9090"
+    health_addr: ":8080"
+  sources: []
+
+# Environment variables sourced from a Secret, referenced by ${VAR} in
+# `config` above (e.g. KENTIK_EMAIL, KENTIK_API_TOKEN, NETBOX_TOKEN).
+secretEnv: {}
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# This is a single-replica, stateful periodic-job workload, not a scaled
+# service — replicas beyond 1 would just duplicate every sync.
+replicaCount: 1
+
+service:
+  metricsPort: 9090
+  healthPort: 8080

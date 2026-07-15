@@ -1,0 +1,25 @@
+[Unit]
+Description=Kentik Sync Agent
+Documentation=https://github.com/kentikethan/kentik_sync_agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kentik-sync-agent
+Group=kentik-sync-agent
+EnvironmentFile=-/etc/kentik-sync-agent/env
+ExecStart=/usr/local/bin/kentik-sync-agent run --config /etc/kentik-sync-agent/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Hardening: the agent only needs outbound network access, its config file,
+# and its state directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kentik-sync-agent
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
