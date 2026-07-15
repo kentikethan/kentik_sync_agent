@@ -17,9 +17,15 @@ deliberately deferred, and how to add another source.
 
 ## Quickstart
 
-1. **Build:**
+There are no published binaries or container images yet, so you need the
+source locally for any of the options below (building from source, Docker,
+or Helm).
+
+1. **Clone and build:**
 
    ```sh
+   git clone https://github.com/kentikethan/kentik_sync_agent.git
+   cd kentik_sync_agent
    go build -o kentik-sync-agent ./cmd/kentik-sync-agent
    ```
 
@@ -61,9 +67,69 @@ deliberately deferred, and how to add another source.
    ./kentik-sync-agent run --config myconfig.yaml
    ```
 
-   Or use the provided [Dockerfile](deploy/docker/Dockerfile), [systemd
-   unit](deploy/systemd/kentik-sync-agent.service), or [Helm
-   chart](deploy/helm/kentik-sync-agent/).
+   For long-running use, pick one of the options below instead of running
+   the binary directly in a terminal.
+
+### Running as a service
+
+**systemd** ([unit file](deploy/systemd/kentik-sync-agent.service)):
+
+```sh
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin kentik-sync-agent
+sudo cp kentik-sync-agent /usr/local/bin/kentik-sync-agent
+sudo mkdir -p /etc/kentik-sync-agent /var/lib/kentik-sync-agent
+sudo cp myconfig.yaml /etc/kentik-sync-agent/config.yaml
+sudo chown -R kentik-sync-agent:kentik-sync-agent /var/lib/kentik-sync-agent
+
+# Secrets referenced as ${VAR} in config.yaml go here as KEY=VALUE lines:
+sudo tee /etc/kentik-sync-agent/env >/dev/null <<'EOF'
+KENTIK_EMAIL=you@example.com
+KENTIK_API_TOKEN=...
+NETBOX_TOKEN=...
+EOF
+sudo chmod 600 /etc/kentik-sync-agent/env
+
+sudo cp deploy/systemd/kentik-sync-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now kentik-sync-agent
+```
+
+**Docker** ([Dockerfile](deploy/docker/Dockerfile)):
+
+```sh
+docker build -t kentik-sync-agent -f deploy/docker/Dockerfile .
+docker run -d \
+  --name kentik-sync-agent \
+  -v "$(pwd)/myconfig.yaml:/etc/kentik-sync-agent/config.yaml:ro" \
+  -v kentik-sync-agent-state:/var/lib/kentik-sync-agent \
+  -e KENTIK_EMAIL=you@example.com \
+  -e KENTIK_API_TOKEN=... \
+  -e NETBOX_TOKEN=... \
+  -p 8080:8080 -p 9090:9090 \
+  kentik-sync-agent
+```
+
+**Helm** ([chart](deploy/helm/kentik-sync-agent/)) — for Kubernetes. The
+chart isn't published to a registry, so build and push the image yourself
+first (or point `image.repository`/`image.tag` at wherever you host it):
+
+```sh
+docker build -t <your-registry>/kentik-sync-agent:0.1.0 -f deploy/docker/Dockerfile .
+docker push <your-registry>/kentik-sync-agent:0.1.0
+
+helm install kentik-sync-agent deploy/helm/kentik-sync-agent \
+  --set image.repository=<your-registry>/kentik-sync-agent \
+  --set image.tag=0.1.0 \
+  --set-string secretEnv.KENTIK_EMAIL=you@example.com \
+  --set-string secretEnv.KENTIK_API_TOKEN=... \
+  --set-string secretEnv.NETBOX_TOKEN=...
+```
+
+  The chart renders `secretEnv` into its own Secret (mounted as env vars)
+  and `config` into a ConfigMap that becomes `config.yaml` — see
+  [values.yaml](deploy/helm/kentik-sync-agent/values.yaml) for the full set
+  of knobs, in particular the `sources:` list, which is empty by default and
+  needs your NetBox source added.
 
 ## How it works
 
