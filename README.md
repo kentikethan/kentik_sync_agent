@@ -29,8 +29,17 @@ or Helm).
    go build -o kentik-sync-agent ./cmd/kentik-sync-agent
    ```
 
-2. **Configure.** Copy [config/example.yaml](config/example.yaml) and fill
-   in your Kentik and NetBox details. At minimum you need:
+2. **Configure.** Copy [config/example.yaml](config/example.yaml) to
+   `myconfig.yaml` and fill in your Kentik and NetBox details:
+
+   ```sh
+   cp config/example.yaml myconfig.yaml
+   ```
+
+   (The name `myconfig.yaml` is just what the rest of this guide uses —
+   call it whatever you like, and pass that path to `--config` below.)
+
+   At minimum you need:
    - A Kentik API token (Kentik > Profile > Authentication).
    - Your Kentik billing plan ID (`kentik.default_plan_id` — Admin > Plans).
    - An existing Kentik Custom Dimension to hold IP-group Populators

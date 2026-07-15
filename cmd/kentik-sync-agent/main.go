@@ -176,6 +176,19 @@ func runOnce(ctx context.Context, engine *syncpkg.Engine, jobs []scheduler.Sched
 		for _, ferr := range result.FetchErrors {
 			log.Error("fetch error", "source", j.Job.SourceName, "error", ferr)
 		}
+		for _, obj := range []struct {
+			name string
+			res  syncpkg.ObjectResult
+		}{
+			{"site", result.Sites},
+			{"device", result.Devices},
+			{"ip_group", result.IPGroups},
+			{"device_label", result.DeviceLabels},
+		} {
+			for _, aerr := range obj.res.Errors {
+				log.Error("apply error", "source", j.Job.SourceName, "object_type", obj.name, "error", aerr)
+			}
+		}
 		if result.HasFailures() {
 			failed = true
 		}
