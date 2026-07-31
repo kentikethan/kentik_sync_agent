@@ -22,11 +22,29 @@ kentik:
   # Kentik device_subtype assigned to synced devices, unless a source
   # overrides it. Must match a subtype enabled on your account — see
   # Admin > Devices > Add Device for the list of valid values.
-  default_device_subtype: "host-nprobe-dns-www"
+  default_device_subtype: "router"
 
-  # An existing Custom Dimension (Admin > Custom Dimensions) that IP-group
-  # Populators are written into. Create it once, by hand, before first sync.
-  custom_dimension_id: "12345"
+  # Two existing Custom Dimensions (Admin > Custom Dimensions) that IP-group
+  # Populators are written into — one for source-side, one for
+  # destination-side matching. An IP group configured direction: either
+  # (below) is written into BOTH. Create both once, by hand, before first
+  # sync.
+  source_custom_dimension_id: "12345"
+  destination_custom_dimension_id: "12346"
+
+  # Optional: route specific tenants (or tenant+VRF combinations) to their
+  # own pre-existing Custom Dimension(s) instead of the shared ones above.
+  # Use this only if you know two tenants have colliding/overlapping IP
+  # ranges that need to stay in separate dimensions — Kentik caps the
+  # number of dimensions per account, so this isn't meant to be one
+  # dimension per tenant.
+  # ip_group_dimensions:
+  #   - tenant: "enterprise-backbone"
+  #     source_custom_dimension_id: "23456"      # all VRFs for this tenant
+  #     destination_custom_dimension_id: "23457"
+  #   - tenant: "acme-corp"
+  #     vrf: "vrf-blue"
+  #     source_custom_dimension_id: "34567"      # only acme-corp in vrf-blue
 
   rate_limit:
     requests_per_minute: 100
@@ -40,10 +58,8 @@ state:
   path: /var/lib/kentik-sync-agent/state.db
 
 observability:
-  log_level: info      # debug | info | warn | error
-  log_format: json      # json | text
-  metrics_addr: ":9090" # Prometheus /metrics
-  health_addr: ":8080"  # /healthz, /readyz
+  log_level: info   # debug | info | warn | error
+  log_format: json  # json | text
 
 sources:
   - name: netbox-primary

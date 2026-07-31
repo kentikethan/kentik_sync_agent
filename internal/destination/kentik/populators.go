@@ -9,9 +9,11 @@ import (
 )
 
 // PopulatorApplier applies core.IPGroup values as Populators within a
-// single, pre-existing Kentik Custom Dimension (cfg.CustomDimensionID).
-// Kentik's Populator API has no batch create/update/delete, so this issues
-// one call per IP group.
+// single, pre-existing Kentik Custom Dimension (customDimensionID). The
+// sync engine holds one PopulatorApplier per dimension it needs to write
+// to — see internal/sync.IPGroupDestinations, which resolves each IP
+// group to one or more dimension IDs. Kentik's Populator API has no batch
+// create/update/delete, so this issues one call per IP group.
 type PopulatorApplier struct {
 	client            *Client
 	customDimensionID string

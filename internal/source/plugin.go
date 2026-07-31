@@ -36,8 +36,7 @@ type Source interface {
 	FetchIPGroups(ctx context.Context, since string) (core.FetchResult[core.IPGroup], error)
 	FetchDeviceLabels(ctx context.Context, since string) (core.FetchResult[core.DeviceLabels], error)
 
-	// HealthCheck verifies connectivity/auth to the source, used at startup
-	// and by the agent's /readyz endpoint.
+	// HealthCheck verifies connectivity/auth to the source, used at startup.
 	HealthCheck(ctx context.Context) error
 }
 

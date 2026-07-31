@@ -93,6 +93,13 @@ type IPGroup struct {
 	Label      string
 	Direction  IPGroupDirection
 
+	// Tenant and VRF are the source's raw tenant/VRF names (independent of
+	// whatever field a source's label_field config renders into Label).
+	// The sync engine uses them to resolve which Kentik Custom Dimension an
+	// IP group targets and to break ties between colliding CIDRs.
+	Tenant string
+	VRF    string
+
 	SourcePlugin string
 }
 

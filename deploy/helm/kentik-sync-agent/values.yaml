@@ -13,15 +13,14 @@ config: |
     api_token: "${KENTIK_API_TOKEN}"
     default_plan_id: 0
     default_device_subtype: "host-nprobe-dns-www"
-    custom_dimension_id: ""
+    source_custom_dimension_id: ""
+    destination_custom_dimension_id: ""
   state:
     driver: sqlite
     path: /var/lib/kentik-sync-agent/state.db
   observability:
     log_level: info
     log_format: json
-    metrics_addr: ":9090"
-    health_addr: ":8080"
   sources: []
 
 # Environment variables sourced from a Secret, referenced by ${VAR} in
@@ -44,7 +43,3 @@ resources:
 # This is a single-replica, stateful periodic-job workload, not a scaled
 # service — replicas beyond 1 would just duplicate every sync.
 replicaCount: 1
-
-service:
-  metricsPort: 9090
-  healthPort: 8080

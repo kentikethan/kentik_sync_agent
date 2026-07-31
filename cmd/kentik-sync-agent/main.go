@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,8 +36,6 @@ func main() {
 	switch os.Args[1] {
 	case "run":
 		err = runCmd(os.Args[2:])
-	case "healthcheck":
-		err = healthcheckCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -56,8 +53,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `kentik-sync-agent — sync inventory into Kentik from NetBox and other sources
 
 Usage:
-  kentik-sync-agent run --config <path> [--source <name>] [--once] [--dry-run]
-  kentik-sync-agent healthcheck [--health-addr <addr>]`)
+  kentik-sync-agent run --config <path> [--source <name>] [--once] [--dry-run]`)
 }
 
 func runCmd(args []string) error {
@@ -90,7 +86,6 @@ func runCmd(args []string) error {
 		Timeout:              cfg.Kentik.Timeout,
 		DefaultPlanID:        cfg.Kentik.DefaultPlanID,
 		DefaultDeviceSubtype: cfg.Kentik.DefaultDeviceSubtype,
-		CustomDimensionID:    cfg.Kentik.CustomDimensionID,
 		RequestsPerMinute:    cfg.Kentik.RateLimit.RequestsPerMinute,
 	})
 	if err != nil {
@@ -102,8 +97,9 @@ func runCmd(args []string) error {
 		Store:    store,
 		Sites:    kentik.NewSiteApplier(kentikClient),
 		Devices:  kentik.NewDeviceApplier(kentikClient),
-		IPGroups: kentik.NewPopulatorApplier(kentikClient, cfg.Kentik.CustomDimensionID),
+		IPGroups: buildIPGroupDestinations(kentikClient, cfg.Kentik),
 		Labels:   kentik.NewLabelApplier(kentikClient),
+		Logger:   log,
 	}
 
 	jobs, err := buildJobs(cfg, *only, *dryRun)
@@ -129,6 +125,42 @@ func openStore(cfg config.Config, dryRun bool) (state.Store, error) {
 		path = "kentik-sync-agent.db"
 	}
 	return state.OpenSQLite(path)
+}
+
+// buildIPGroupDestinations constructs one kentik.PopulatorApplier per
+// distinct Custom Dimension referenced by config (the default plus each
+// configured route, deduped) and wires them into an IPGroupDestinations
+// that the sync engine uses to route/resolve IP groups by tenant/VRF.
+func buildIPGroupDestinations(kentikClient *kentik.Client, kc config.KentikConfig) *syncpkg.IPGroupDestinations {
+	appliers := map[string]*kentik.PopulatorApplier{}
+	ensure := func(dimensionID string) {
+		if dimensionID == "" {
+			return
+		}
+		if _, ok := appliers[dimensionID]; !ok {
+			appliers[dimensionID] = kentik.NewPopulatorApplier(kentikClient, dimensionID)
+		}
+	}
+	ensure(kc.SourceCustomDimensionID)
+	ensure(kc.DestinationCustomDimensionID)
+
+	routes := make([]syncpkg.IPGroupRoute, 0, len(kc.IPGroupDimensions))
+	for _, r := range kc.IPGroupDimensions {
+		ensure(r.SourceCustomDimensionID)
+		ensure(r.DestinationCustomDimensionID)
+		routes = append(routes, syncpkg.IPGroupRoute{
+			Tenant:                       r.Tenant,
+			VRF:                          r.VRF,
+			SourceCustomDimensionID:      r.SourceCustomDimensionID,
+			DestinationCustomDimensionID: r.DestinationCustomDimensionID,
+		})
+	}
+	return &syncpkg.IPGroupDestinations{
+		DefaultSourceDimensionID:      kc.SourceCustomDimensionID,
+		DefaultDestinationDimensionID: kc.DestinationCustomDimensionID,
+		Routes:                        routes,
+		Appliers:                      appliers,
+	}
 }
 
 func buildJobs(cfg config.Config, only string, dryRun bool) ([]scheduler.ScheduledJob, error) {
@@ -203,63 +235,10 @@ func runScheduled(engine *syncpkg.Engine, jobs []scheduler.ScheduledJob, cfg con
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	startObservabilityServers(ctx, cfg, log)
-
 	sch := &scheduler.Scheduler{
 		Logger: log,
 		Run:    engine.RunJob,
 	}
 	sch.Start(ctx, jobs)
-	return nil
-}
-
-func startObservabilityServers(ctx context.Context, cfg config.Config, log *slog.Logger) {
-	metricsAddr := cfg.Observability.MetricsAddr
-	if metricsAddr == "" {
-		metricsAddr = ":9090"
-	}
-	healthAddr := cfg.Observability.HealthAddr
-	if healthAddr == "" {
-		healthAddr = ":8080"
-	}
-
-	metricsSrv := &http.Server{Addr: metricsAddr, Handler: observability.NewMetricsMux()}
-	healthSrv := &http.Server{Addr: healthAddr, Handler: observability.NewHealthMux(func(context.Context) error { return nil })}
-
-	go func() {
-		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("metrics server exited", "error", err)
-		}
-	}()
-	go func() {
-		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("health server exited", "error", err)
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = metricsSrv.Shutdown(shutdownCtx)
-		_ = healthSrv.Shutdown(shutdownCtx)
-	}()
-}
-
-func healthcheckCmd(args []string) error {
-	fs := flag.NewFlagSet("healthcheck", flag.ExitOnError)
-	healthAddr := fs.String("health-addr", "localhost:8080", "the agent's health check listen address")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://" + *healthAddr + "/healthz")
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("healthz returned %s", resp.Status)
-	}
 	return nil
 }

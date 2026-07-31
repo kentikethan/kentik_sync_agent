@@ -82,7 +82,9 @@ showed that isn't available:
 - `Populator` (the IP-group mechanism, via the Custom Dimension API) has no
   external-id field either, but its `Addr` field is literally the CIDR
   being matched — which already serves as a natural, unique-enough key
-  within one Custom Dimension.
+  within one Custom Dimension. A single dimension's populators only match
+  one traffic side, though, so this agent uses two dimensions (source-side,
+  destination-side — see below) rather than one.
 
 **Consequence:** `internal/state`'s local mapping table is the
 *authoritative* record of what this agent created, not a performance
@@ -140,6 +142,59 @@ contains it and folding that prefix's tenant/VLAN/description into the same
 per-device label set `device_labels` already produces. That correlation
 step (plus deciding the exact label names, e.g. `Netbox:Subnet:Tenant:<name>`)
 is a natural follow-up once `device_labels` has some runtime mileage.
+
+## IP group CIDR overlap resolution and dimension routing
+
+Kentik's Custom Dimension Populator model rejects overlapping CIDR ranges
+within one dimension, but NetBox naturally has nested prefixes (a site
+`/8`, a VLAN `/16`, a subnet `/24`, often under different tenants/VRFs).
+`internal/sync/ipgroup_dimension.go`'s `filterMostSpecific` runs on every
+sync (not configurable): within whatever dimension a set of IP groups
+target, only the most-specific (longest-prefix-match) CIDR per overlapping
+range survives; broader enclosing prefixes are dropped (logged at `info`).
+For a genuine tie — identical/overlapping CIDRs with no containment
+relationship, e.g. the same range under two tenants routed to the same
+dimension — a deterministic winner is picked (alphabetically-first tenant,
+then VRF, then CIDR) and logged at `warn`.
+
+This check runs against the full previously-synced set for the source
+(loaded from local state, not just the current fetch batch), so an
+incremental run correctly catches a newly-changed prefix overlapping an
+older, untouched one already live in Kentik.
+
+**Two dimensions, not one.** A Kentik Populator's `Addr` match only applies
+to one traffic side, so `kentik.source_custom_dimension_id` and
+`kentik.destination_custom_dimension_id` are two separate, always-required
+(once a source syncs `ip_groups`) dimensions. An IP group configured
+`direction: src` or `direction: dst` (`mapping.ip_groups.direction`) is
+written into just the matching one; `direction: either` is split into two
+independently-tracked populators — one per dimension — via
+`IPGroupDestinations.ResolveTargets` (`internal/sync/ipgroup_dimension.go`).
+Each half gets a distinct state-store identity (`<external_id>:src` /
+`<external_id>:dst`) since `state.Mapping` is keyed by a single external ID
+per Kentik object; the containment/tie-break filtering above runs
+independently per dimension, so the two halves of an "either" group never
+interact with each other's containment decisions.
+
+`kentik.ip_group_dimensions` (see `config/example.yaml`) optionally routes
+specific tenant/VRF combinations to their own pre-provisioned Custom
+Dimension(s) instead of the shared defaults — for customers who know they
+have cross-tenant collisions. A route can override just one side (leaving
+the other on the default) via `source_custom_dimension_id`/
+`destination_custom_dimension_id`. Kentik caps dimensions per account and
+this agent has no `CreateCustomDimension` code, so dimensions remain a
+manual setup step; this isn't meant to scale to one dimension per tenant.
+
+Known gaps in this specific area:
+- **Legacy mapping backfill**: mappings created before this feature have
+  empty `cidr`/`tenant`/`vrf` in local state until next touched by a full
+  reconcile pass (which re-fetches everything) — containment correctness
+  for old, untouched IP groups may be incomplete until then.
+- **End-to-end apply tests**: `internal/sync/ipgroup_dimension_test.go`
+  covers the containment/tie-break/routing logic directly; there isn't yet
+  a full `runIPGroups` test exercising dimension migration
+  (delete-old/create-new) against fake Kentik clients, following
+  `internal/destination/kentik/labels_test.go`'s pattern.
 
 ## Known gaps in the current implementation
 

@@ -12,8 +12,5 @@ COPY --from=builder /out/kentik-sync-agent /usr/local/bin/kentik-sync-agent
 COPY config/example.yaml /etc/kentik-sync-agent/example.yaml
 
 USER nonroot:nonroot
-EXPOSE 8080 9090
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD ["/usr/local/bin/kentik-sync-agent", "healthcheck"]
 
 ENTRYPOINT ["/usr/local/bin/kentik-sync-agent", "run", "--config", "/etc/kentik-sync-agent/config.yaml"]

@@ -42,9 +42,11 @@ or Helm).
    At minimum you need:
    - A Kentik API token (Kentik > Profile > Authentication).
    - Your Kentik billing plan ID (`kentik.default_plan_id` — Admin > Plans).
-   - An existing Kentik Custom Dimension to hold IP-group Populators
-     (`kentik.custom_dimension_id` — create one under Admin > Custom
-     Dimensions before first sync).
+   - Two existing Kentik Custom Dimensions to hold IP-group Populators —
+     one for source-side matching, one for destination-side
+     (`kentik.source_custom_dimension_id` / `kentik.destination_custom_dimension_id`
+     — create both under Admin > Custom Dimensions before first sync, only
+     needed if `sync.objects` includes `ip_groups`).
    - A NetBox URL and read-only API token.
 
    Secrets are referenced as `${ENV_VAR}`, never written inline:
@@ -114,7 +116,6 @@ docker run -d \
   -e KENTIK_EMAIL=you@example.com \
   -e KENTIK_API_TOKEN=... \
   -e NETBOX_TOKEN=... \
-  -p 8080:8080 -p 9090:9090 \
   kentik-sync-agent
 ```
 
@@ -167,11 +168,10 @@ label/custom-field limitation above).
 
 ## Observability
 
-- Structured logs (JSON by default) to stdout.
-- Prometheus metrics on `observability.metrics_addr` (default `:9090`).
-- `/healthz` and `/readyz` on `observability.health_addr` (default `:8080`).
-- `kentik-sync-agent healthcheck` for use in a Docker `HEALTHCHECK` or
-  systemd watchdog.
+Structured logs (JSON by default) to stdout, level/format set via
+`observability.log_level`/`observability.log_format`. That's the whole
+surface for now — no metrics endpoint or health check server; MVP scope
+keeps the agent to a single process with no extra listeners.
 
 ## Testing
 

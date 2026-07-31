@@ -45,13 +45,39 @@ type KentikConfig struct {
 	// "host-nprobe-dns-www"); see Admin > Devices in the Kentik UI.
 	DefaultDeviceSubtype string `yaml:"default_device_subtype"`
 
-	// CustomDimensionID targets an existing Custom Dimension (found under
-	// Admin > Custom Dimensions) that IP-group Populators are written into.
-	// Kentik's Populator API is scoped to one Custom Dimension per call, so
-	// this must be created once via the Kentik UI/API before first sync.
-	CustomDimensionID string `yaml:"custom_dimension_id"`
+	// SourceCustomDimensionID and DestinationCustomDimensionID each target an
+	// existing Custom Dimension (found under Admin > Custom Dimensions).
+	// Kentik's Populator API is scoped to one Custom Dimension per call, and
+	// a single dimension's populators only match one traffic side, so an IP
+	// group configured with direction "either" is written as a populator
+	// into BOTH dimensions (one src-matching, one dst-matching) — a group
+	// configured "src" or "dst" only is written into the matching one.
+	// Both must be created once via the Kentik UI/API before first sync.
+	SourceCustomDimensionID      string `yaml:"source_custom_dimension_id"`
+	DestinationCustomDimensionID string `yaml:"destination_custom_dimension_id"`
+
+	// IPGroupDimensions optionally routes specific tenant/VRF combinations
+	// to their own pre-existing Custom Dimension(s) instead of the shared
+	// ones above. Matching prefers the most specific route (an exact
+	// tenant+vrf match, then a tenant-only match), so route order in YAML
+	// doesn't matter. Unmatched IP groups use the dimensions above. Kentik
+	// caps the number of Custom Dimensions per account, so this is meant for
+	// isolating a handful of known cross-tenant CIDR collisions, not a
+	// dimension per tenant.
+	IPGroupDimensions []IPGroupDimensionRoute `yaml:"ip_group_dimensions,omitempty"`
 
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
+}
+
+// IPGroupDimensionRoute routes one tenant (optionally scoped to one VRF) to
+// Custom Dimension(s) other than KentikConfig's defaults. Leave either ID
+// empty to fall back to the corresponding default dimension for that side.
+type IPGroupDimensionRoute struct {
+	Tenant string `yaml:"tenant"`
+	// VRF, if empty, matches Tenant across all VRFs.
+	VRF                          string `yaml:"vrf,omitempty"`
+	SourceCustomDimensionID      string `yaml:"source_custom_dimension_id,omitempty"`
+	DestinationCustomDimensionID string `yaml:"destination_custom_dimension_id,omitempty"`
 }
 
 type RateLimitConfig struct {
@@ -64,10 +90,8 @@ type StateConfig struct {
 }
 
 type ObservabilityConfig struct {
-	LogLevel    string `yaml:"log_level"`
-	LogFormat   string `yaml:"log_format"`
-	MetricsAddr string `yaml:"metrics_addr"`
-	HealthAddr  string `yaml:"health_addr"`
+	LogLevel  string `yaml:"log_level"`
+	LogFormat string `yaml:"log_format"`
 }
 
 // SourceConfig is one configured source instance. Connection and Mapping
@@ -159,6 +183,20 @@ func (c Config) Validate() error {
 	if c.Kentik.DefaultPlanID == 0 {
 		return fmt.Errorf("kentik.default_plan_id is required")
 	}
+	seenRoutes := map[[2]string]bool{}
+	for _, route := range c.Kentik.IPGroupDimensions {
+		if route.Tenant == "" {
+			return fmt.Errorf("kentik.ip_group_dimensions: tenant is required")
+		}
+		if route.SourceCustomDimensionID == "" && route.DestinationCustomDimensionID == "" {
+			return fmt.Errorf("kentik.ip_group_dimensions: at least one of source_custom_dimension_id/destination_custom_dimension_id is required for tenant %q", route.Tenant)
+		}
+		key := [2]string{route.Tenant, route.VRF}
+		if seenRoutes[key] {
+			return fmt.Errorf("kentik.ip_group_dimensions: duplicate route for tenant %q vrf %q", route.Tenant, route.VRF)
+		}
+		seenRoutes[key] = true
+	}
 	if len(c.Sources) == 0 {
 		return fmt.Errorf("at least one entry under sources is required")
 	}
@@ -182,7 +220,7 @@ func (c Config) Validate() error {
 		if err != nil {
 			return fmt.Errorf("source %q: %w", sc.Name, err)
 		}
-		var wantsDeviceLabels, wantsDevices bool
+		var wantsDeviceLabels, wantsDevices, wantsIPGroups bool
 		for _, obj := range sc.Sync.Objects {
 			if !source.HasCapability(src, obj) {
 				return fmt.Errorf("source %q: type %q does not support object type %q", sc.Name, sc.Type, obj)
@@ -192,6 +230,8 @@ func (c Config) Validate() error {
 				wantsDeviceLabels = true
 			case core.ObjectDevices:
 				wantsDevices = true
+			case core.ObjectIPGroups:
+				wantsIPGroups = true
 			}
 		}
 		if len(sc.Sync.Objects) == 0 {
@@ -199,6 +239,9 @@ func (c Config) Validate() error {
 		}
 		if wantsDeviceLabels && !wantsDevices {
 			return fmt.Errorf("source %q: sync.objects includes %q, which requires %q to also be listed (it labels already-synced devices)", sc.Name, core.ObjectDeviceLabels, core.ObjectDevices)
+		}
+		if wantsIPGroups && (c.Kentik.SourceCustomDimensionID == "" || c.Kentik.DestinationCustomDimensionID == "") {
+			return fmt.Errorf("source %q: sync.objects includes %q, which requires kentik.source_custom_dimension_id and kentik.destination_custom_dimension_id to both be set", sc.Name, core.ObjectIPGroups)
 		}
 	}
 	return nil

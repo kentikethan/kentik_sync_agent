@@ -26,21 +26,6 @@ spec:
             - secretRef:
                 name: {{ .Release.Name }}-env
           {{- end }}
-          ports:
-            - name: metrics
-              containerPort: {{ .Values.service.metricsPort }}
-            - name: health
-              containerPort: {{ .Values.service.healthPort }}
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: health
-            initialDelaySeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: health
-            initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

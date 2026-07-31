@@ -20,6 +20,11 @@ import (
 // the Kentik UI) is left untouched.
 const managedLabelPrefix = "Netbox:"
 
+// defaultLabelColor is applied to every label this agent creates. Kentik's
+// CreateLabel RPC rejects an omitted/empty color field, and NetBox has no
+// equivalent per-tenant/per-role color concept to plumb through instead.
+const defaultLabelColor = "#5A6ACF"
+
 // LabelApplier applies core.DeviceLabels to already-synced Kentik devices,
 // via Kentik's Label service (get-or-create by name) and the Device
 // service's label-replace RPC.
@@ -61,7 +66,7 @@ func (a *LabelApplier) resolveLabelIDs(ctx context.Context, names map[string]boo
 		err := a.client.call(ctx, func(ctx context.Context) error {
 			var callErr error
 			createResp, callErr = a.client.Labels.CreateLabel(ctx, &label.CreateLabelRequest{
-				Label: &label.Label{Name: name},
+				Label: &label.Label{Name: name, Color: defaultLabelColor},
 			})
 			return callErr
 		})

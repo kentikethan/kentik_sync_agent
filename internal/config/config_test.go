@@ -24,7 +24,8 @@ kentik:
   api_token: "${TEST_KENTIK_TOKEN}"
   default_plan_id: 123
   default_device_subtype: "host-nprobe-dns-www"
-  custom_dimension_id: "1"
+  source_custom_dimension_id: "1"
+  destination_custom_dimension_id: "2"
 state:
   driver: sqlite
   path: /tmp/state.db

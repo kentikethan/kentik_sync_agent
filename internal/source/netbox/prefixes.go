@@ -59,6 +59,8 @@ func (p netboxPrefix) toCore(labelField string, dir core.IPGroupDirection) core.
 		CIDR:       p.Prefix,
 		Label:      labelFor(labelField, p.VRF, p.Role, p.Tenant, p.Scope),
 		Direction:  dir,
+		Tenant:     p.Tenant.label(),
+		VRF:        p.VRF.label(),
 	}
 }
 
@@ -71,6 +73,8 @@ func (r netboxIPRange) toCore(labelField string, dir core.IPGroupDirection) core
 		CIDR:       stripCIDR(r.StartAddress) + "-" + stripCIDR(r.EndAddress),
 		Label:      labelFor(labelField, r.VRF, r.Role, r.Tenant, nil),
 		Direction:  dir,
+		Tenant:     r.Tenant.label(),
+		VRF:        r.VRF.label(),
 	}
 }
 

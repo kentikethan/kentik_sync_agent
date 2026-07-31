@@ -1,6 +1,5 @@
-// Package observability provides the agent's logging, metrics, and health
-// check surfaces — the operational tooling a customer self-hosting this
-// service needs to monitor it.
+// Package observability provides the agent's structured logging. MVP scope
+// keeps this to logging only — no metrics or health check HTTP surfaces.
 package observability
 
 import (

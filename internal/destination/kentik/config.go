@@ -22,7 +22,6 @@ type Config struct {
 
 	DefaultPlanID        uint32
 	DefaultDeviceSubtype string
-	CustomDimensionID    string
 
 	RequestsPerMinute int
 }

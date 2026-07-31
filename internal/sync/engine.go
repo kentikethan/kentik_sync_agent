@@ -7,6 +7,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/kentikethan/kentik_sync_agent/internal/core"
@@ -51,8 +52,19 @@ type Engine struct {
 	Store    state.Store
 	Sites    *kentik.SiteApplier
 	Devices  *kentik.DeviceApplier
-	IPGroups *kentik.PopulatorApplier
+	IPGroups *IPGroupDestinations
 	Labels   *kentik.LabelApplier
+	// Logger receives operational logging from within the sync engine
+	// itself (currently just IP group containment/collision decisions).
+	// Falls back to slog.Default() if unset, so tests need not set it.
+	Logger *slog.Logger
+}
+
+func (e *Engine) logger() *slog.Logger {
+	if e.Logger != nil {
+		return e.Logger
+	}
+	return slog.Default()
 }
 
 // resolveSince decides, for one object type in a job, what `since` cursor

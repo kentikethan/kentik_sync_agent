@@ -25,6 +25,24 @@ type Mapping struct {
 	KentikID    string
 	ContentHash string
 	UpdatedAt   time.Time
+
+	// CIDR, Tenant, and VRF are populated for core.ObjectIPGroups mappings
+	// only (empty for every other object type). They let the sync engine
+	// reconstruct the full previously-synced CIDR set — including items an
+	// incremental fetch didn't re-fetch this run — to detect newly
+	// introduced overlaps against ranges Kentik already has, and to log a
+	// deterministic tie-break when two ranges genuinely collide.
+	CIDR   string
+	Tenant string
+	VRF    string
+
+	// CustomDimensionID is the Kentik Custom Dimension this IP group's
+	// populator currently lives in (core.ObjectIPGroups only). Required so
+	// Update/Delete can target the right dimension once IP groups can route
+	// to more than one, and so a tenant/VRF (or config) change that moves a
+	// prefix to a different dimension is detected as delete-old+create-new
+	// rather than silently leaving a stale populator behind.
+	CustomDimensionID string
 }
 
 // Store is implemented by the SQLite-backed store (and an in-memory store
