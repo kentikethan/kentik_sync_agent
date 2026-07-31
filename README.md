@@ -9,6 +9,12 @@ first; Nautobot, Infoblox, and others planned) into
 You run it in your own environment. You decide what syncs, from where, and
 how often, via one YAML config file.
 
+> **Disclaimer:** This is an independent open source project, not an
+> official Kentik product. It is not supported by Kentik — there's no
+> SLA, support ticket queue, or guarantee of maintenance. Use it at your
+> own risk; see [LICENSE](LICENSE) (GPLv3) for the full terms. Issues and
+> contributions are welcome via this repo.
+
 ## Status
 
 NetBox → Kentik (devices, sites, IP-prefix-based grouping) is implemented
