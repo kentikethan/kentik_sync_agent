@@ -20,6 +20,11 @@ type Source interface {
 	// Name returns the plugin's registered type name, e.g. "netbox".
 	Name() string
 
+	// Endpoint returns the source system's configured base URL/address,
+	// e.g. NetBox's connection.url. Used for operational reporting only
+	// (see internal/observability) — never for fetch logic.
+	Endpoint() string
+
 	// Capabilities lists which object types this source can produce. The
 	// config layer validates that a source is only asked to sync object
 	// types it declares here.

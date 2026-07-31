@@ -1,5 +1,7 @@
-// Package observability provides the agent's structured logging. MVP scope
-// keeps this to logging only — no metrics or health check HTTP surfaces.
+// Package observability provides the agent's structured logging and its
+// Kentik NMS metrics push (see metrics.go). There's no scraped /metrics
+// endpoint or health-check HTTP server — MVP scope keeps the agent to a
+// single process with no extra listeners; metrics go out, nothing comes in.
 package observability
 
 import (

@@ -96,6 +96,8 @@ func New(cfg Config) *Source {
 
 func (s *Source) Name() string { return "netbox" }
 
+func (s *Source) Endpoint() string { return s.cfg.URL }
+
 func (s *Source) Capabilities() []core.ObjectType {
 	return []core.ObjectType{core.ObjectDevices, core.ObjectSites, core.ObjectIPGroups, core.ObjectDeviceLabels}
 }

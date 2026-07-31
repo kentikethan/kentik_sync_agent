@@ -168,10 +168,20 @@ label/custom-field limitation above).
 
 ## Observability
 
-Structured logs (JSON by default) to stdout, level/format set via
-`observability.log_level`/`observability.log_format`. That's the whole
-surface for now — no metrics endpoint or health check server; MVP scope
-keeps the agent to a single process with no extra listeners.
+- Structured logs (JSON by default) to stdout, level/format set via
+  `observability.log_level`/`observability.log_format`.
+- Per-sync-run operational metrics (source endpoint, agent name, counts of
+  devices/sites/IP-groups/labels created/updated/deleted/skipped/failed,
+  duration, success) pushed to Kentik's own metrics ingest (Kentik NMS) as
+  InfluxDB line protocol, under measurement `/kentik/sync-agent/<source
+  type>` — e.g. `/kentik/sync-agent/netbox`. On by default (reuses
+  `kentik.email`/`kentik.api_token`); set `observability.kentik_metrics.disabled: true`
+  to turn it off. See [docs/plugins.md](docs/plugins.md) for the wire
+  format and design rationale.
+
+No scraped `/metrics` endpoint or health-check HTTP server — MVP scope
+keeps the agent to a single process with no extra listeners; metrics go
+out, nothing comes in.
 
 ## Testing
 

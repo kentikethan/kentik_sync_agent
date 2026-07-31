@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kentikethan/kentik_sync_agent/internal/observability"
 	syncpkg "github.com/kentikethan/kentik_sync_agent/internal/sync"
 )
 
@@ -30,6 +31,12 @@ type RunFunc func(ctx context.Context, job syncpkg.Job) (syncpkg.Result, error)
 type Scheduler struct {
 	Run    RunFunc
 	Logger *slog.Logger
+
+	// Reporter and AgentName are used to push per-run operational metrics
+	// to Kentik NMS after each job. Reporter may be nil in tests that don't
+	// care about metrics.
+	Reporter  *observability.MetricsReporter
+	AgentName string
 }
 
 // Start runs every job on its own ticker (firing once immediately, then on
@@ -72,15 +79,19 @@ func (s *Scheduler) runOnce(ctx context.Context, job syncpkg.Job) {
 		log.Error("sync run failed to start", "error", err)
 		return
 	}
+	duration := time.Since(start)
 
 	log.Info("sync run finished",
-		"duration", time.Since(start).String(),
+		"duration", duration.String(),
 		"sites", result.Sites.String(),
 		"devices", result.Devices.String(),
 		"ip_groups", result.IPGroups.String(),
 		"device_labels", result.DeviceLabels.String(),
 		"fetch_errors", len(result.FetchErrors),
 	)
+	if !job.DryRun {
+		s.Reporter.Report(ctx, observability.NewSyncMetrics(s.AgentName, job, result, duration))
+	}
 	for _, ferr := range result.FetchErrors {
 		log.Error("sync fetch error", "error", ferr)
 	}

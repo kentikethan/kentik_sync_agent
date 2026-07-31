@@ -196,6 +196,41 @@ Known gaps in this specific area:
   (delete-old/create-new) against fake Kentik clients, following
   `internal/destination/kentik/labels_test.go`'s pattern.
 
+## Operational metrics to Kentik NMS
+
+Every completed sync job (both the `--once` path and the scheduler's
+recurring runs, skipped entirely for `--dry-run`) pushes one InfluxDB
+line-protocol point to Kentik's own metrics ingest, mirroring the wire
+format from Kentik's
+[Telegraf HTTP output blog post](https://www.kentik.com/blog/using-telegraf-to-feed-api-json-data-into-kentik-nms/):
+`X-CH-Auth-Email`/`X-CH-Auth-API-Token` headers (the same credentials as
+`kentik.email`/`kentik.api_token` — no separate credential),
+`Content-Type: application/influx`, nanosecond timestamps.
+
+Measurement is `/kentik/sync-agent/<source type>` (e.g.
+`/kentik/sync-agent/netbox`, using whatever a source plugin's `Name()`
+returns — see `source.Source.Endpoint()`, added specifically so this
+layer can report "which NetBox endpoint was hit" without knowing anything
+NetBox-specific). Tags: `agent_name`, `source_name`, `endpoint`. Fields:
+`duration_ms`, `success` (0/1), `fetch_errors`, and
+`created`/`updated`/`deleted`/`skipped`/`failed` counts per object type
+(`sites_*`, `devices_*`, `ip_groups_*`, `device_labels_*`) — all reused
+directly from `internal/sync/report.go`'s existing `ObjectResult` counts,
+no new aggregation logic. See `internal/observability/metrics.go`.
+
+Design choices worth knowing if you touch this:
+- **Enabled by default** (`observability.kentik_metrics.disabled: true` to
+  turn it off) — treated as core observability, not an opt-in extra.
+- **Fire-and-forget, no retry.** One HTTP POST per job per run, bounded by
+  a 10s client timeout; a failure logs a `warn` and is otherwise ignored —
+  it never fails the sync job or affects its exit code, unlike the actual
+  Kentik gRPC calls (`internal/destination/kentik/retry.go`), which do
+  retry with backoff. Telemetry loss is an acceptable failure mode; a
+  missed sync isn't.
+- **Bucket/org query params are left empty** in the ingest URL
+  (`?bucket=&org=&precision=ns`), exactly as shown in Kentik's blog post —
+  auth is via the headers above, not InfluxDB's org/bucket concept.
+
 ## Known gaps in the current implementation
 
 - **NetBox delete detection**: NetBox's `/api/extras/object-changes/`

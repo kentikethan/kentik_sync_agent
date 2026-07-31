@@ -19,6 +19,11 @@ import (
 
 // Config is the agent's fully-parsed configuration.
 type Config struct {
+	// AgentName identifies this agent instance in operational metrics (see
+	// ObservabilityConfig.KentikMetrics). Defaults to the machine's
+	// hostname if unset.
+	AgentName string `yaml:"agent_name"`
+
 	Kentik        KentikConfig        `yaml:"kentik"`
 	State         StateConfig         `yaml:"state"`
 	Observability ObservabilityConfig `yaml:"observability"`
@@ -92,6 +97,26 @@ type StateConfig struct {
 type ObservabilityConfig struct {
 	LogLevel  string `yaml:"log_level"`
 	LogFormat string `yaml:"log_format"`
+
+	KentikMetrics KentikMetricsConfig `yaml:"kentik_metrics"`
+}
+
+// KentikMetricsConfig controls pushing per-sync-run operational metrics
+// (device/site/IP-group counts, source endpoint, duration, etc.) to
+// Kentik's own metrics ingest (Kentik NMS) as InfluxDB line protocol. See
+// https://www.kentik.com/blog/using-telegraf-to-feed-api-json-data-into-kentik-nms/
+// for the wire format this mirrors. Auth reuses kentik.email/api_token;
+// there's no separate credential to configure here.
+type KentikMetricsConfig struct {
+	// Disabled turns this off. Zero-value (unset) means enabled — this is
+	// on by default, unlike most opt-in features, since it's considered
+	// core observability.
+	Disabled bool `yaml:"disabled"`
+
+	// URL is the Kentik NMS ingest endpoint. Defaults to Kentik's
+	// documented endpoint if empty; only override if Kentik has given you
+	// a different one.
+	URL string `yaml:"url"`
 }
 
 // SourceConfig is one configured source instance. Connection and Mapping
@@ -116,12 +141,24 @@ const (
 	defaultFullReconcile     = 24 * time.Hour
 	defaultKentikTimeout     = 30 * time.Second
 	defaultRequestsPerMinute = 100
+	defaultAgentName         = "kentik-sync-agent"
+	defaultKentikMetricsURL  = "https://grpc.api.kentik.com/kmetrics/v202207/metrics/api/v2/write?bucket=&org=&precision=ns"
 )
 
 // applyDefaults fills in zero-value fields with their defaults, once, right
 // after parsing, so the rest of the codebase can read Config fields
 // directly without every call site re-implementing "or the default".
 func (c *Config) applyDefaults() {
+	if c.AgentName == "" {
+		if host, err := os.Hostname(); err == nil && host != "" {
+			c.AgentName = host
+		} else {
+			c.AgentName = defaultAgentName
+		}
+	}
+	if c.Observability.KentikMetrics.URL == "" {
+		c.Observability.KentikMetrics.URL = defaultKentikMetricsURL
+	}
 	if c.Kentik.Timeout <= 0 {
 		c.Kentik.Timeout = defaultKentikTimeout
 	}

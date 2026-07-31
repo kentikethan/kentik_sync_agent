@@ -6,6 +6,11 @@
 # Secrets are never written inline — reference an environment variable with
 # ${VAR_NAME} and the agent will substitute it at load time.
 
+# Identifies this agent instance in the operational metrics it pushes to
+# Kentik NMS (see observability.kentik_metrics below). Defaults to the
+# machine's hostname if omitted.
+agent_name: "kentik-sync-agent"
+
 kentik:
   # Kentik's public gRPC API host. Leave as-is unless Kentik has given you a
   # region-specific endpoint.
@@ -60,6 +65,15 @@ state:
 observability:
   log_level: info   # debug | info | warn | error
   log_format: json  # json | text
+
+  # Pushes per-sync-run operational metrics (source endpoint, counts of
+  # devices/sites/IP-groups/labels synced, duration, success) to Kentik's
+  # own metrics ingest (Kentik NMS) as InfluxDB line protocol, under
+  # measurement /kentik/sync-agent/<source type>. Reuses kentik.email/
+  # api_token above — no separate credential needed. On by default.
+  kentik_metrics:
+    # disabled: true  # uncomment to turn this off
+    # url: "..."      # override only if Kentik gave you a different ingest endpoint
 
 sources:
   - name: netbox-primary

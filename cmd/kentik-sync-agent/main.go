@@ -102,6 +102,8 @@ func runCmd(args []string) error {
 		Logger:   log,
 	}
 
+	metricsReporter := observability.NewMetricsReporter(cfg.Observability.KentikMetrics, cfg.Kentik.Email, cfg.Kentik.APIToken, log)
+
 	jobs, err := buildJobs(cfg, *only, *dryRun)
 	if err != nil {
 		return err
@@ -111,9 +113,9 @@ func runCmd(args []string) error {
 	}
 
 	if *once {
-		return runOnce(context.Background(), engine, jobs, log)
+		return runOnce(context.Background(), engine, jobs, cfg.AgentName, metricsReporter, log)
 	}
-	return runScheduled(engine, jobs, cfg, log)
+	return runScheduled(engine, jobs, cfg, metricsReporter, log)
 }
 
 func openStore(cfg config.Config, dryRun bool) (state.Store, error) {
@@ -188,7 +190,7 @@ func buildJobs(cfg config.Config, only string, dryRun bool) ([]scheduler.Schedul
 	return jobs, nil
 }
 
-func runOnce(ctx context.Context, engine *syncpkg.Engine, jobs []scheduler.ScheduledJob, log *slog.Logger) error {
+func runOnce(ctx context.Context, engine *syncpkg.Engine, jobs []scheduler.ScheduledJob, agentName string, metricsReporter *observability.MetricsReporter, log *slog.Logger) error {
 	failed := false
 	for _, j := range jobs {
 		log.Info("sync run starting", "source", j.Job.SourceName, "dry_run", j.Job.DryRun)
@@ -197,14 +199,18 @@ func runOnce(ctx context.Context, engine *syncpkg.Engine, jobs []scheduler.Sched
 		if err != nil {
 			return fmt.Errorf("source %q: %w", j.Job.SourceName, err)
 		}
+		duration := time.Since(start)
 		log.Info("sync run finished",
 			"source", j.Job.SourceName,
-			"duration", time.Since(start).String(),
+			"duration", duration.String(),
 			"sites", result.Sites.String(),
 			"devices", result.Devices.String(),
 			"ip_groups", result.IPGroups.String(),
 			"device_labels", result.DeviceLabels.String(),
 		)
+		if !j.Job.DryRun {
+			metricsReporter.Report(ctx, observability.NewSyncMetrics(agentName, j.Job, result, duration))
+		}
 		for _, ferr := range result.FetchErrors {
 			log.Error("fetch error", "source", j.Job.SourceName, "error", ferr)
 		}
@@ -231,13 +237,15 @@ func runOnce(ctx context.Context, engine *syncpkg.Engine, jobs []scheduler.Sched
 	return nil
 }
 
-func runScheduled(engine *syncpkg.Engine, jobs []scheduler.ScheduledJob, cfg config.Config, log *slog.Logger) error {
+func runScheduled(engine *syncpkg.Engine, jobs []scheduler.ScheduledJob, cfg config.Config, metricsReporter *observability.MetricsReporter, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	sch := &scheduler.Scheduler{
-		Logger: log,
-		Run:    engine.RunJob,
+		Logger:    log,
+		Run:       engine.RunJob,
+		Reporter:  metricsReporter,
+		AgentName: cfg.AgentName,
 	}
 	sch.Start(ctx, jobs)
 	return nil
